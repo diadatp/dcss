@@ -5,21 +5,25 @@ if (!Array.prototype.last){
 };
 
 if (!('contains' in String.prototype)) {
-  String.prototype.contains = function(str, startIndex) {
-    return ''.indexOf.call(this, str, startIndex) !== -1;
-  };
+	String.prototype.contains = function(str, startIndex) {
+		return ''.indexOf.call(this, str, startIndex) !== -1;
+	};
 }
 
 var net = require('net');
+var HashMap = require('hashmap');
+var lowdb = require('lowdb')
 
+var db = lowdb('db.json')
+var nickIPmap = new HashMap();
+
+var first = 0;
 var hub_ip = '10.3.14.10';
 var hub_port = 500;
 var search_timeout = 5000;
 
-var HashMap = require('hashmap');
-var nickIPmap = new HashMap();
-
-var first = 0;
+// var hub_ip = 'brianzaland.ex3menet.com';
+// var hub_port = 443;
 
 var client = net.connect({host: hub_ip, port: hub_port}, function() {
 	console.log('Connected to server.');
@@ -41,6 +45,7 @@ client.on('data', function(data) {
 		var tokens = element.split(' ');
 		switch(tokens[0]) {
 			case '$Search':
+				db('searches').push({'nick': tokens[1], hub: 'tit'});
 				// console.log('search ' + tokens);
 				// client.write("$Search Hub:johndoe F?T?0?9?TTH:3WPUB5PVZ5IW3UGUGUKASJHBY5FKCSLKZGVAXBQ|");
 				// client.write("$Search Hub:johndoe F?T?0?1?sex|");
@@ -51,22 +56,22 @@ client.on('data', function(data) {
 				}
 				break;
 			case '$MyINFO':
-				var nick = element.split(' ')[2];
 				// console.log('nick: ' + nick);
+				var nick = element.split(' ')[2];
 				client.write('$ConnectToMe ' + nick + ' 10.4.1.63:55555|');
 				break;
 			case '$SR':
 				if((tokens.length < 5) || (!tokens.last().contains('(' + hub_ip + ':' + hub_port + ')'))) {
 					break;
 				}
-				console.log('sr ' + tokens);
+				// console.log('sr ' + tokens);
 				var filename = tokens.slice(2, -2).join(' ').split('\\').last();
 				var tth = tokens.slice(1, -1).last().split('TTH:').last();
-				
-				console.log('sr ' + filename + ' ' + tth);
+				// db('tthmap').push({'tth': tth, 'filename': filename});
+				// console.log('sr ' + filename + ' ' + tth);
 				break;
 			default:
-				console.log('other ' + tokens);
+				// console.log('other ' + tokens);
 				break;
 		}
 	});
@@ -101,7 +106,8 @@ var server = net.createServer(function(c) {
 				console.log("someone changed ip?");
 			}
 		}
-		console.log(nick + ' - ' + ip)
+		console.log(nick + ' - ' + ip + ' ' + resolveHostel(ip));
+		// db('nicks').push({'nick': nick, 'ip': ip});
 		nickIPmap.set(nick, ip);
 		c.end();
 	});
@@ -123,3 +129,62 @@ client.on('end', function() {
 	console.log('Disconnected from server.');
 	server.close();
 });
+
+function resolveHostel(ip) {
+	ip = ip.split('.');
+	if(4 != ip.length) {
+		return 'err';
+	}
+	switch(ip[1]) {
+		case '1':
+			return 'CC';
+		case '2':
+			return 'LABS';
+		case '3':
+			switch(ip[2]) {
+				case '1':
+					return 'AH1';
+				case '2':
+					return 'TBI';
+				case '3':
+					return 'AH2';
+				case '4':
+					return 'VGH';
+				case '6':
+					return 'AH3';
+				case '8':
+					return 'AH4';
+				case '9':
+					return 'AH5';
+				case '11':
+					return 'AH6';
+				case '12':
+					return 'AH7';
+				case '14':
+					return 'AH8';
+				default:
+					return 'err';
+			}
+		case '4':
+			switch(ip[2]) {
+				case '1':
+					return 'CH1';
+				case '2':
+					return 'CH1';
+				case '3':
+					return 'CH2';
+				case '5':
+					return 'CH3';
+				case '9':
+					return 'CH5';
+				case '12':
+					return 'CH4';
+				case '14':
+					return 'CH6+CH5';
+				default:
+					return 'err';
+			}
+		default:
+			return 'err';
+	}
+}
