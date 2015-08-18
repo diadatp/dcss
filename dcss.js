@@ -4,6 +4,37 @@ if (!Array.prototype.last) {
 	};
 };
 
+if (!Array.prototype.includes) {
+	Array.prototype.includes = function(searchElement /*, fromIndex*/ ) {
+		'use strict';
+		var O = Object(this);
+		var len = parseInt(O.length) || 0;
+		if (len === 0) {
+			return false;
+		}
+		var n = parseInt(arguments[1]) || 0;
+		var k;
+		if (n >= 0) {
+			k = n;
+		} else {
+			k = len + n;
+			if (k < 0) {
+				k = 0;
+			}
+		}
+		var currentElement;
+		while (k < len) {
+			currentElement = O[k];
+			if (searchElement === currentElement ||
+				(searchElement !== searchElement && currentElement !== currentElement)) {
+				return true;
+			}
+			k++;
+		}
+		return false;
+	};
+}
+
 if (!('contains' in String.prototype)) {
 	String.prototype.contains = function(str, startIndex) {
 		return ''.indexOf.call(this, str, startIndex) !== -1;
@@ -23,6 +54,10 @@ var db = lowdb('db.json')
 var nickIpMap = new HashMap();
 var tthFilenameMap = new HashMap();
 
+var tthNew = [];
+var tthOngoing = [];
+var tthResolved = new Object();
+
 var first = 0;
 var hub_ip = '10.3.14.10';
 var hub_port = 500;
@@ -41,10 +76,12 @@ var client = net.connect({
 		// first = 1;
 	}, 1000);
 
-	// setInterval(function() {
-	// 	console.log('searched');
-	// 	client.write('$Search Hub:johndoe F?T?0?1?sex|');
-	// }, search_timeout);
+	setInterval(function() {
+		console.log(tthNew);
+		var searchTerm = tthNew.pop();
+		tthOngoing.push(searchTerm);
+		client.write('$Search Hub:johndoe F?T?0?9?TTH:' + searchTerm + '|');
+	}, search_timeout);
 });
 
 client.on('data', function(data) {
@@ -67,23 +104,33 @@ client.on('data', function(data) {
 				var isTTH = ('9' == tokens[2].charAt(6));
 				if (isTTH) {
 					var term = tokens[2].split('TTH:').last();
-					if (tthFilenameMap.has(term)) {
-						tthQueryQueue.push(function(cb) {
-							setTimeout(function() {
-								console.log('$ added tth to queue');
-								client.write('$Search Hub:johndoe F?T?0?9?TTH:' + term + '|');
-								cb();
-							}, search_timeout);
-						});
-						tthQueryQueue.start();
+					if ((!tthNew.includes(term)) && (!tthOngoing.includes(term)) && (!tthResolved.hasOwnProperty(term))) {
+						// tthQueryQueue.push(function(cb) {
+						// 	setTimeout(function() {
+						// 		// console.log('$ added tth to queue');
+						// 		// client.write('$Search Hub:johndoe F?T?0?9?TTH:' + term + '|');
+						// 		cb();
+						// 	}, search_timeout);
+						// });
+						// tthQueryQueue.start();
+						// console.log(db('searches').chain().where({
+						// 	'nick': '',
+						// 	'isTTH': false
+						// }).take(5).value());
+						console.log('damn');
+						tthNew.push(term);
 					}
 				} else {
 					var term = tokens[2].split('?').last().split('$').join(' ');
 				}
 				console.log(time + ' ' + nick + ' ' + ip + ' ' + isTTH + ' ' + term);
-				// db('searches').push({'nick': tokens[1], hub: 'tit'});
-				// client.write("$Search Hub:johndoe F?T?0?9?TTH:3WPUB5PVZ5IW3UGUGUKASJHBY5FKCSLKZGVAXBQ|");
-				// client.write("$Search Hub:johndoe F?T?0?1?sex|");
+				db('searches').push({
+					'time': time,
+					'nick': nick,
+					'ip': ip,
+					'isTTH': isTTH,
+					'term': term
+				});
 				break;
 			case '$MyINFO':
 				// console.log('i ' + tokens);
@@ -97,11 +144,12 @@ client.on('data', function(data) {
 				}
 				var filename = tokens.slice(2, -2).join(' ').split('\\').last();
 				var tth = tokens.slice(1, -1).last().split('TTH:').last();
+				// tthOngoing.
+				tthResolved[tth] = filename;
 				db('tthmap').push({
 					'tth': tth,
 					'filename': filename
 				});
-				// console.log('sr ' + filename + ' ' + tth);
 				break;
 			default:
 				// console.log('other ' + tokens);
@@ -139,9 +187,15 @@ var server = net.createServer(function(c) {
 				console.log("someone changed ip?");
 			}
 		}
-		// console.log(nick + ' - ' + ip + ' ' + resolveHostel(ip));
+		console.log(nick + ' - ' + ip + ' ' + resolveHostel(ip));
 		// db('nicks').push({'nick': nick, 'ip': ip});
 		nickIpMap.set(nick, ip);
+		// console.log(db('searches').chain().where({
+		// 	'nick': nick
+		// }).value());
+		// console.log(db('searches').chain().updateWhere({
+		// 	'nick': nick
+		// }, ).value());
 		c.end();
 	});
 	c.on('error', function(e) {
