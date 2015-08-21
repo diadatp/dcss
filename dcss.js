@@ -41,46 +41,94 @@ if (!('contains' in String.prototype)) {
 	};
 }
 
+Object.defineProperty(Array.prototype, "stackoverflow_remove", {
+	// Specify "enumerable" as "false" to prevent function enumeration
+	enumerable: false,
+
+	/**
+	 * Removes all occurence of specified item from array
+	 * @this Array
+	 * @param itemToRemove Item to remove from array
+	 * @returns {Number} Count of removed items
+	 */
+	value: function(itemToRemove) {
+		// Count of removed items
+		var removeCounter = 0;
+
+		// Iterate every array item
+		for (var index = 0; index < this.length; index++) {
+			// If current array item equals itemToRemove then
+			if (this[index] === itemToRemove) {
+				// Remove array item at current index
+				this.splice(index, 1);
+
+				// Increment count of removed items
+				removeCounter++;
+
+				// Decrement index to iterate current position 
+				// one more time, because we just removed item 
+				// that occupies it, and next item took it place
+				index--;
+			}
+		}
+
+		// Return count of removed items
+		return removeCounter;
+	}
+});
+
 var net = require('net');
 var HashMap = require('hashmap');
 var lowdb = require('lowdb')
 var queue = require('queue');
+var os = require('os');
+
+var interfaces = os.networkInterfaces();
+var addresses = [];
+for (var k in interfaces) {
+	for (var k2 in interfaces[k]) {
+		var address = interfaces[k][k2];
+		if (address.family === 'IPv4' && !address.internal) {
+			addresses.push(address.address);
+		}
+	}
+}
 
 var tthQueryQueue = queue({
 	'concurrency': 1
 });
 
 var db = lowdb('db.json')
-var nickIpMap = new HashMap();
-var tthFilenameMap = new HashMap();
+
+var nickToIP = new Object();
 
 var tthNew = [];
 var tthOngoing = [];
 var tthResolved = new Object();
 
 var first = 0;
-var hub_ip = '10.3.14.10';
-var hub_port = 500;
+var hubIP = '10.3.14.10';
+var hubPort = 500;
+var myIP = addresses[0];
+var nickname = 'johndoe';
 var search_timeout = 5000;
 
-// var hub_ip = 'brianzaland.ex3menet.com';
-// var hub_port = 443;
-
 var client = net.connect({
-	host: hub_ip,
-	port: hub_port
+	host: hubIP,
+	port: hubPort
 }, function() {
 	console.log('Connected to server.');
 	setTimeout(function() {
-		client.write('$Supports UserCommand UserIP2|$Key 011010110110010101111001|$ValidateNick johndoe|$Version 1,0091|$GetNickList|$MyINFO $ALL johndoe <++ V:0.673,M:A,H:1/0/0,S:3>$ $LAN(T3)0x31$example@example.com$26843545600$|');
-		// first = 1;
+		client.write('$Supports UserCommand UserIP2|$Key 011010110110010101111001|$ValidateNick ' + nickname + '|$Version 1,0091|$GetNickList|$MyINFO $ALL ' + nickname + ' <++ V:0.673,M:A,H:1/0/0,S:3>$ $LAN(T3)0x31$example@example.com$26843545600$|');
 	}, 1000);
-
 	setInterval(function() {
-		console.log(tthNew);
+		if (0 == tthNew.length) {
+			return;
+		}
+		// console.log(tthNew);
 		var searchTerm = tthNew.pop();
 		tthOngoing.push(searchTerm);
-		client.write('$Search Hub:johndoe F?T?0?9?TTH:' + searchTerm + '|');
+		client.write('$Search Hub:' + nickname + ' F?T?0?9?TTH:' + searchTerm + '|');
 	}, search_timeout);
 });
 
@@ -96,7 +144,14 @@ client.on('data', function(data) {
 				var time = new Date().getTime();
 				if (tokens[1].contains('Hub:')) {
 					var nick = tokens[1].slice(4);
-					var ip = '';
+					if (nickname == nick) {
+						break;
+					}
+					if (nickToIP.hasOwnProperty(nick)) {
+						var ip = nickToIP[nick];
+					} else {
+						var ip = '';
+					}
 				} else {
 					var nick = '';
 					var ip = tokens[1].split(':')[0];
@@ -105,25 +160,18 @@ client.on('data', function(data) {
 				if (isTTH) {
 					var term = tokens[2].split('TTH:').last();
 					if ((!tthNew.includes(term)) && (!tthOngoing.includes(term)) && (!tthResolved.hasOwnProperty(term))) {
-						// tthQueryQueue.push(function(cb) {
-						// 	setTimeout(function() {
-						// 		// console.log('$ added tth to queue');
-						// 		// client.write('$Search Hub:johndoe F?T?0?9?TTH:' + term + '|');
-						// 		cb();
-						// 	}, search_timeout);
-						// });
 						// tthQueryQueue.start();
 						// console.log(db('searches').chain().where({
 						// 	'nick': '',
 						// 	'isTTH': false
 						// }).take(5).value());
-						console.log('damn');
 						tthNew.push(term);
 					}
 				} else {
 					var term = tokens[2].split('?').last().split('$').join(' ');
 				}
-				console.log(time + ' ' + nick + ' ' + ip + ' ' + isTTH + ' ' + term);
+				console.log(isTTH?(tthResolved.hasOwnProperty[term]?tthResolved[term]:term):term);
+				console.log(time + ' ' + nick + '\t\t\t' + resolveHostel(ip) + ' ' + isTTH + ' ' + term);
 				db('searches').push({
 					'time': time,
 					'nick': nick,
@@ -135,61 +183,49 @@ client.on('data', function(data) {
 			case '$MyINFO':
 				// console.log('i ' + tokens);
 				var nick = element.split(' ')[2];
-				client.write('$ConnectToMe ' + nick + ' 10.4.1.63:55555|');
+				client.write('$ConnectToMe ' + nick + ' ' + myIP + ':55555|');
 				break;
 			case '$SR':
-				console.log('sr ' + tokens);
-				if ((tokens.length < 5) || (!tokens.last().contains('(' + hub_ip + ':' + hub_port + ')'))) {
+				// console.log('sr ' + tokens);
+				if ((tokens.length < 5) || (!tokens.last().contains('(' + hubIP + ':' + hubPort + ')'))) {
 					break;
 				}
 				var filename = tokens.slice(2, -2).join(' ').split('\\').last();
 				var tth = tokens.slice(1, -1).last().split('TTH:').last();
-				// tthOngoing.
-				tthResolved[tth] = filename;
-				db('tthmap').push({
-					'tth': tth,
-					'filename': filename
-				});
+				tthOngoing.stackoverflow_remove(tth);
+				if (!tthResolved.hasOwnProperty(tth)) {
+					tthResolved[tth] = filename;
+					db('tthmap').push({
+						'tth': tth,
+						'filename': filename
+					});
+					console.log('got new sr' + tth + filename);
+				}
 				break;
 			default:
-				// console.log('other ' + tokens);
+				// console.log('o ' + tokens);
 				break;
 		}
 	});
-
-	if (1 == first) {
-		client.write("<johndoe> dsdsds|");
-	}
 });
-
-function deferredLogNick(time, x) {
-	// console.log(x[0].slice(4) + x[1]);
-	client.write('$ConnectToMe ' + x[1].slice(4) + ' 10.4.1.63:55555|');
-	if ('9' == x[2].charAt(6)) {
-		// console.log('tth');
-	}
-}
-
-function deferredLogIP(time, x) {
-	// console.log(x[0] + x[1]);
-}
-
-function resolveTTH(tth) {
-	return 'hellp';
-}
 
 var server = net.createServer(function(c) {
 	c.on('data', function(data) {
 		var nick = data.toString().split('|')[0].split(' ')[1];
 		var ip = c.remoteAddress.split(':').last();
-		if (nickIpMap.has(nick)) {
-			if (nickIpMap.get(nick) != ip) {
-				console.log("someone changed ip?");
-			}
+		if (nickToIP.hasOwnProperty(nick) && (nickToIP[nick] != ip)) {
+			console.log(nick + ' changed ip?');
+			nickToIP[nick] = ip;
+			// update db
+			// db('nicks').push({'nick': nick, 'ip': ip});
+		} else {
+			nickToIP[nick] = ip;
+			db('nicks').push({
+				'nick': nick,
+				'ip': ip
+			});
 		}
-		console.log(nick + ' - ' + ip + ' ' + resolveHostel(ip));
-		// db('nicks').push({'nick': nick, 'ip': ip});
-		nickIpMap.set(nick, ip);
+		// console.log(nick + ' - ' + ip + ' ' + resolveHostel(ip));
 		// console.log(db('searches').chain().where({
 		// 	'nick': nick
 		// }).value());
@@ -220,7 +256,7 @@ client.on('end', function() {
 function resolveHostel(ip) {
 	ip = ip.split('.');
 	if (4 != ip.length) {
-		return 'err';
+		return 'err len' + ip;
 	}
 	switch (ip[1]) {
 		case '1':
@@ -250,7 +286,7 @@ function resolveHostel(ip) {
 				case '14':
 					return 'AH8';
 				default:
-					return 'err';
+					return 'err' + ip;
 			}
 		case '4':
 			switch (ip[2]) {
@@ -269,9 +305,11 @@ function resolveHostel(ip) {
 				case '14':
 					return 'CH6+CH5';
 				default:
-					return 'err';
+					return 'err:' + ip;
 			}
+		case '20':
+			return 'LIB';
 		default:
-			return 'err';
+			return 'err' + ip;
 	}
 }
