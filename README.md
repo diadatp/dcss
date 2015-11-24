@@ -7,7 +7,7 @@ $ git clone https://github.com/diadatp/dcss.git
 
 $ cd dcss
 
-$ npm install hashmap
+$ npm install hashmap queue csv
 
 $ node dcss.js
 

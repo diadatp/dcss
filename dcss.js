@@ -42,46 +42,28 @@ if (!('contains' in String.prototype)) {
 }
 
 Object.defineProperty(Array.prototype, "stackoverflow_remove", {
-	// Specify "enumerable" as "false" to prevent function enumeration
 	enumerable: false,
-
-	/**
-	 * Removes all occurence of specified item from array
-	 * @this Array
-	 * @param itemToRemove Item to remove from array
-	 * @returns {Number} Count of removed items
-	 */
 	value: function(itemToRemove) {
-		// Count of removed items
 		var removeCounter = 0;
-
-		// Iterate every array item
 		for (var index = 0; index < this.length; index++) {
-			// If current array item equals itemToRemove then
 			if (this[index] === itemToRemove) {
-				// Remove array item at current index
 				this.splice(index, 1);
-
-				// Increment count of removed items
 				removeCounter++;
-
-				// Decrement index to iterate current position 
-				// one more time, because we just removed item 
-				// that occupies it, and next item took it place
 				index--;
 			}
 		}
-
-		// Return count of removed items
 		return removeCounter;
 	}
 });
 
-var net = require('net');
-var HashMap = require('hashmap');
-var lowdb = require('lowdb')
-var queue = require('queue');
+var NRS_PORT = 5555;
+
 var os = require('os');
+var fs = require('fs');
+var net = require('net');
+
+var HashMap = require('hashmap');
+var queue = require('queue');
 
 var interfaces = os.networkInterfaces();
 var addresses = [];
@@ -98,7 +80,7 @@ var tthQueryQueue = queue({
 	'concurrency': 1
 });
 
-var db = lowdb('db.json')
+var stringify = require('csv-stringify');
 
 var nickToIP = new Object();
 
@@ -113,11 +95,97 @@ var myIP = addresses[0];
 var nickname = 'johndoe';
 var search_timeout = 5000;
 
+// Nickname record keeping.
+
+NickWritableStream = fs.createWriteStream("nick.csv", {
+	flags: 'a'
+});
+
+NickWritableStream.on("finish", function() {
+	console.log("Nick writableStream done.");
+});
+
+NickStringifier = stringify({
+	delimiter: ','
+});
+
+NickStringifier.on('readable', function() {
+	while (row = NickStringifier.read()) {
+		NickWritableStream.write(row);
+	}
+});
+
+NickStringifier.on('error', function(err) {
+	console.log(err.message);
+});
+
+NickStringifier.on('finish', function() {
+	console.log("Nick stringifier finished.");
+});
+
+// Search record keeping.
+
+SearchWritableStream = fs.createWriteStream("search.csv", {
+	flags: 'a'
+});
+
+SearchWritableStream.on("finish", function() {
+	console.log("Search writableStream done.");
+});
+
+SearchStringifier = stringify({
+	delimiter: ','
+});
+
+SearchStringifier.on('readable', function() {
+	while (row = SearchStringifier.read()) {
+		SearchWritableStream.write(row);
+	}
+});
+
+SearchStringifier.on('error', function(err) {
+	console.log(err.message);
+});
+
+SearchStringifier.on('finish', function() {
+	console.log("Search stringifier finished.");
+});
+
+// TTH record keeping.
+
+TTHWritableStream = fs.createWriteStream("tth.csv", {
+	flags: 'a'
+});
+
+TTHWritableStream.on("finish", function() {
+	console.log("TTH writableStream done.");
+});
+
+TTHStringifier = stringify({
+	delimiter: ','
+});
+
+TTHStringifier.on('readable', function() {
+	while (row = TTHStringifier.read()) {
+		TTHWritableStream.write(row);
+	}
+});
+
+TTHStringifier.on('error', function(err) {
+	console.log(err.message);
+});
+
+TTHStringifier.on('finish', function() {
+	console.log("TTH stringifier finished.");
+});
+
+// DC client.
+
 var client = net.connect({
 	host: hubIP,
 	port: hubPort
 }, function() {
-	console.log('Connected to server.');
+	console.log('Connected to DC hub.');
 	setTimeout(function() {
 		client.write('$Supports UserCommand UserIP2|$Key 011010110110010101111001|$ValidateNick ' + nickname + '|$Version 1,0091|$GetNickList|$MyINFO $ALL ' + nickname + ' <++ V:0.673,M:A,H:1/0/0,S:3>$ $LAN(T3)0x31$example@example.com$26843545600$|');
 	}, 1000);
@@ -145,6 +213,7 @@ client.on('data', function(data) {
 				if (tokens[1].contains('Hub:')) {
 					var nick = tokens[1].slice(4);
 					if (nickname == nick) {
+						// It's my own search.
 						break;
 					}
 					if (nickToIP.hasOwnProperty(nick)) {
@@ -156,6 +225,7 @@ client.on('data', function(data) {
 					var nick = '';
 					var ip = tokens[1].split(':')[0];
 				}
+
 				var isTTH = ('9' == tokens[2].charAt(6));
 				if (isTTH) {
 					var term = tokens[2].split('TTH:').last();
@@ -170,20 +240,22 @@ client.on('data', function(data) {
 				} else {
 					var term = tokens[2].split('?').last().split('$').join(' ');
 				}
-				console.log(isTTH?(tthResolved.hasOwnProperty[term]?tthResolved[term]:term):term);
-				console.log(time + ' ' + nick + '\t\t\t' + resolveHostel(ip) + ' ' + isTTH + ' ' + term);
-				db('searches').push({
+				console.log(nick + '\t\t' + isTTH ? (tthResolved.hasOwnProperty[term] ? tthResolved[term] : term) : term);
+				// console.log(time + ' ' + nick + '\t\t\t' + resolveHostel(ip) + ' ' + isTTH + ' ' + term);
+				SearchStringifier.write({
 					'time': time,
 					'nick': nick,
 					'ip': ip,
+					'hostel': resolveHostel(ip),
 					'isTTH': isTTH,
 					'term': term
 				});
 				break;
 			case '$MyINFO':
 				// console.log('i ' + tokens);
+				// Get the nickname and send a 'ConnectToMe' request to harvest the IP.
 				var nick = element.split(' ')[2];
-				client.write('$ConnectToMe ' + nick + ' ' + myIP + ':55555|');
+				client.write('$ConnectToMe ' + nick + ' ' + myIP + ':' + NRS_PORT + '|');
 				break;
 			case '$SR':
 				// console.log('sr ' + tokens);
@@ -195,11 +267,11 @@ client.on('data', function(data) {
 				tthOngoing.stackoverflow_remove(tth);
 				if (!tthResolved.hasOwnProperty(tth)) {
 					tthResolved[tth] = filename;
-					db('tthmap').push({
+					TTHStringifier.write({
 						'tth': tth,
 						'filename': filename
 					});
-					console.log('got new sr' + tth + filename);
+					// console.log('got new sr' + tth + filename);
 				}
 				break;
 			default:
@@ -209,48 +281,66 @@ client.on('data', function(data) {
 	});
 });
 
-var server = net.createServer(function(c) {
+var NRServer = net.createServer(function(c) {
 	c.on('data', function(data) {
+		// Someone is responding to a 'ConnectToMe' request. Harvest.
 		var nick = data.toString().split('|')[0].split(' ')[1];
 		var ip = c.remoteAddress.split(':').last();
+
+		// Check if the nickname is known.
 		if (nickToIP.hasOwnProperty(nick) && (nickToIP[nick] != ip)) {
 			console.log(nick + ' changed ip?');
-			nickToIP[nick] = ip;
-			// update db
-			// db('nicks').push({'nick': nick, 'ip': ip});
-		} else {
-			nickToIP[nick] = ip;
-			db('nicks').push({
-				'nick': nick,
-				'ip': ip
-			});
 		}
+
+		// Cache the resolution.
+		nickToIP[nick] = ip;
+
 		// console.log(nick + ' - ' + ip + ' ' + resolveHostel(ip));
-		// console.log(db('searches').chain().where({
-		// 	'nick': nick
-		// }).value());
-		// console.log(db('searches').chain().updateWhere({
-		// 	'nick': nick
-		// }, ).value());
+
+		// Write to csv file.
+		NickStringifier.write({
+			time: new Date().getTime(),
+			nick: nick,
+			ip: ip,
+			hostel: resolveHostel(ip)
+		});
+
 		c.end();
 	});
+
 	c.on('error', function(e) {
-		console.log('NRSC roblem with request: ' + e.message);
+		console.log('NRSC problem with request: ' + e.message);
 	});
-
 });
 
-server.listen(55555, function() {
-	console.log('Nick resolve server bound.');
+NRServer.listen(NRS_PORT, function() {
+	console.log('Nickname Resolution Server bound.');
 });
 
-server.on('error', function(e) {
+NRServer.on('error', function(e) {
 	console.log('NRS Problem with request: ' + e.message);
 });
 
+client.on('error', function(err) {
+	console.log(err.message);
+	NickStringifier.end();
+	NickWritableStream.end();
+	SearchStringifier.end();
+	SearchWritableStream.end();
+	TTHStringifier.end();
+	TTHWritableStream.end();
+	NRServer.close();
+});
+
 client.on('end', function() {
-	console.log('Disconnected from server.');
-	server.close();
+	console.log('Disconnected from DC hub.');
+	NickStringifier.end();
+	NickWritableStream.end();
+	SearchStringifier.end();
+	SearchWritableStream.end();
+	TTHStringifier.end();
+	TTHWritableStream.end();
+	NRServer.close();
 });
 
 function resolveHostel(ip) {
